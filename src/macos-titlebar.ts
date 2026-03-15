@@ -10,13 +10,10 @@ import type { BrowserWindow } from "electron";
 /**
  * macOS title bar — zero added space, existing negative space is draggable.
  *
- * Key fixes over upstream:
- * 1. .mx_RoomHeader_infoWrapper overridden from height:100% to height:auto
- *    so header padding is exposed as drag surface.
- * 2. The infoWrapper button is NOT marked no-drag — it inherits drag from
- *    the header so the 52px right padding (empty space right of room name)
- *    is a drag surface.
- * 3. Only the heading text and non-infoWrapper buttons are no-drag.
+ * The infoWrapper button is EXPLICITLY set to drag (not relying on
+ * inheritance from the header — inheritance through <button> elements
+ * may not work in all Chromium versions). Only the heading text inside
+ * is carved out as no-drag so the room name remains clickable.
  */
 export function setupMacosTitleBar(window: BrowserWindow): void {
     if (process.platform !== "darwin") return;
@@ -26,7 +23,7 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
     async function applyStyling(): Promise<void> {
         cssKey = await window.webContents.insertCSS(`
             /* =============================================================
-             * USER MENU — traffic light clearance + drag handle
+             * USER MENU — traffic light clearance + drag
              * ============================================================= */
             .mx_UserMenu {
                 margin-top: 0 !important;
@@ -44,13 +41,7 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             }
 
             /* =============================================================
-             * ROOM HEADER — the whole 64px bar is draggable
-             *
-             * The infoWrapper button (room name area) KEEPS drag behavior
-             * from the header. Only the actual heading text and right-side
-             * buttons are carved out as no-drag. This means the empty
-             * space to the right of the room name and the padding above/
-             * below all header items are drag surfaces.
+             * ROOM HEADER — the 64px bar is the drag surface
              * ============================================================= */
             header.mx_RoomHeader,
             .mx_RoomHeader.light-panel {
@@ -58,24 +49,26 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-user-select: none;
             }
 
-            /* Break the info wrapper's height:100% so the header's own
-             * padding is exposed above and below */
+            /* The info wrapper: override height:100% to expose header padding,
+             * and EXPLICITLY set drag (not inheritance — buttons may block it) */
             .mx_RoomHeader_infoWrapper {
                 height: auto !important;
                 align-self: center !important;
+                -webkit-app-region: drag !important;
             }
 
-            /* The room name / heading text — clickable (opens room info) */
+            /* The room name text — this is the only clickable part of the
+             * info wrapper. Clicking here opens room summary panel. */
             .mx_RoomHeader_heading {
-                -webkit-app-region: no-drag;
+                -webkit-app-region: no-drag !important;
+                cursor: pointer;
             }
 
-            /* All buttons EXCEPT the infoWrapper — clickable */
+            /* All other buttons in the header (call, threads, notifications,
+             * info, member count) — clickable */
             .mx_RoomHeader button:not(.mx_RoomHeader_infoWrapper) {
                 -webkit-app-region: no-drag;
             }
-
-            /* Other interactive elements in the header */
             .mx_RoomHeader a,
             .mx_RoomHeader [role="button"],
             .mx_RoomHeader .mx_FacePile,
@@ -97,21 +90,27 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             }
 
             /* =============================================================
-             * SEARCH / FILTER AREA — container padding is draggable
+             * SEARCH / FILTER — convert margin to padding for more drag area
              *
-             * The filter container has 12px top + 8px bottom padding.
-             * RoomSearch (flex:1, 28px) sits inside. The padding strips
-             * above and below the search button are the drag surface.
-             * The search button itself stays interactive.
+             * The filter container originally has margin:0 12px (not part of
+             * the element) and padding:12px 0 8px. We convert the horizontal
+             * margin to padding so the left/right edges become drag surfaces
+             * too, giving ~12px on each side plus 12px above and 8px below.
              * ============================================================= */
             .mx_LeftPanel_filterContainer {
                 -webkit-app-region: drag;
                 -webkit-user-select: none;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+                padding-left: 12px !important;
+                padding-right: 12px !important;
             }
-            /* The search button and other controls — interactive */
-            .mx_LeftPanel_filterContainer .mx_RoomSearch,
-            .mx_LeftPanel_filterContainer .mx_AccessibleButton,
-            .mx_LeftPanel_filterContainer button {
+            /* The search button and controls — interactive */
+            .mx_LeftPanel_filterContainer .mx_RoomSearch {
+                -webkit-app-region: no-drag;
+            }
+            .mx_LeftPanel_filterContainer button,
+            .mx_LeftPanel_filterContainer [role="button"]:not(.mx_RoomSearch) {
                 -webkit-app-region: no-drag;
             }
 
