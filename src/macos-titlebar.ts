@@ -8,17 +8,14 @@ Please see LICENSE files in the repository root for full details.
 import type { BrowserWindow } from "electron";
 
 /**
- * macOS title bar — z-index overlay approach.
+ * macOS title bar — full-width drag band using z-index overlays.
  *
- * Leverages Electron 23+ behavior: "a drag region on top of a no-drag
- * region will correctly cause the region to be draggable."
+ * Creates a continuous draggable band across the full window width by
+ * applying drag overlays to all three columns (space panel, room list,
+ * room view) at the same vertical position.
  *
- * An absolutely-positioned ::after pseudo-element covers the full header
- * as a drag surface. Interactive elements (buttons, heading text, avatar)
- * are raised above it with z-index + no-drag. The infoWrapper button
- * (which has flex:1 + height:100% and covers the entire header) is left
- * WITHOUT a stacking context so it sits below the overlay — its empty
- * space becomes drag territory.
+ * Uses Electron 23+ z-index stacking: drag overlay on top wins over
+ * no-drag elements below. Interactive elements raised above the overlay.
  */
 export function setupMacosTitleBar(window: BrowserWindow): void {
     if (process.platform !== "darwin") return;
@@ -28,118 +25,72 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
     async function applyStyling(): Promise<void> {
         cssKey = await window.webContents.insertCSS(`
             /* =============================================================
-             * USER MENU — traffic light clearance + drag
+             * COLUMN 1: SPACE PANEL — push content below header band
+             *
+             * The space panel gets top padding equal to the room header
+             * height (64px). Traffic lights sit in this area. The ::after
+             * overlay makes it a drag surface. Space icons start below.
              * ============================================================= */
-            .mx_UserMenu {
-                margin-top: 0 !important;
-                margin-left: 0 !important;
-                padding-top: 24px !important;
-                padding-left: 20px !important;
+            .mx_SpacePanel {
+                padding-top: 64px !important;
+                position: relative !important;
+            }
+            .mx_SpacePanel::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 64px;
                 -webkit-app-region: drag;
-                -webkit-user-select: none;
+                z-index: 5;
+            }
+
+            /* User menu no longer needs extra traffic light padding —
+             * the 64px space panel padding handles it */
+            .mx_UserMenu {
+                padding-top: 0 !important;
+                margin-top: 12px !important;
             }
             .mx_UserMenu > * {
                 -webkit-app-region: no-drag;
             }
+
+            /* Reset toggle collapse position */
             .mx_SpacePanel_toggleCollapse {
-                top: calc(19px + 24px - 12px) !important;
+                top: 19px !important;
             }
 
             /* =============================================================
-             * ROOM HEADER — z-index overlay approach
+             * COLUMN 2: ROOM LIST — search/filter with overlay
              *
-             * ::after = full-size drag overlay at z-index 5
-             * Interactive elements raised to z-index 10 with no-drag
-             * InfoWrapper has NO stacking context → sits below overlay
-             * Heading text raised to z-index 10 independently
+             * Convert margin to padding so the overlay covers the edges.
+             * Push content down to align with space panel.
              * ============================================================= */
-            header.mx_RoomHeader,
-            .mx_RoomHeader.light-panel {
+            .mx_LeftPanel_roomListContainer {
+                padding-top: 64px !important;
                 position: relative !important;
-                -webkit-user-select: none;
             }
-
-            /* The drag overlay — covers the entire header */
-            header.mx_RoomHeader::after,
-            .mx_RoomHeader.light-panel::after {
+            .mx_LeftPanel_roomListContainer::after {
                 content: "";
                 position: absolute;
                 top: 0;
                 left: 0;
                 right: 0;
-                bottom: 0;
+                height: 64px;
                 -webkit-app-region: drag;
                 z-index: 5;
             }
 
-            /* Raise ALL direct children above the overlay...
-             * EXCEPT the infoWrapper which we want below it */
-            header.mx_RoomHeader > *:not(.mx_RoomHeader_infoWrapper),
-            .mx_RoomHeader.light-panel > *:not(.mx_RoomHeader_infoWrapper) {
-                position: relative !important;
-                z-index: 10 !important;
-                -webkit-app-region: no-drag;
-            }
-
-            /* The infoWrapper: do NOT give it position/z-index.
-             * Without a stacking context, it sits below the ::after overlay.
-             * Clicks on its empty space (right of room name) hit the overlay → drag.
-             * Also remove flex:1 visual waste — constrain to content width. */
-            .mx_RoomHeader_infoWrapper {
-                position: static !important;
-                z-index: auto !important;
-                /* Shrink to content instead of filling entire header width */
-                flex: 0 1 auto !important;
-                min-width: 0;
-            }
-
-            /* The heading text (room name) — raise ABOVE the overlay.
-             * Since infoWrapper has no stacking context, this participates
-             * in the header's stacking context directly. */
-            .mx_RoomHeader_heading {
-                position: relative !important;
-                z-index: 10 !important;
-                -webkit-app-region: no-drag;
-                cursor: pointer;
-            }
-
-            /* The info box wrapper — also no stacking context */
-            .mx_RoomHeader_info {
-                position: static !important;
-                z-index: auto !important;
-            }
-
-            /* Legacy room header — same overlay approach */
-            .mx_LegacyRoomHeader {
-                position: relative !important;
-                -webkit-user-select: none;
-            }
-            .mx_LegacyRoomHeader::after {
-                content: "";
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                -webkit-app-region: drag;
-                z-index: 5;
-            }
-            .mx_LegacyRoomHeader > * {
-                position: relative !important;
-                z-index: 10 !important;
-                -webkit-app-region: no-drag;
-            }
-
-            /* =============================================================
-             * SEARCH / FILTER — same overlay approach
-             *
-             * ::after = drag overlay covering the full container
-             * RoomSearch button raised above it → clickable
-             * Padding areas fall through to overlay → drag
-             * ============================================================= */
+            /* Search filter — sits in the content area below the 64px band.
+             * Uses its own overlay for the padding around the search input. */
             .mx_LeftPanel_filterContainer {
                 position: relative !important;
                 -webkit-user-select: none;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+                padding-left: 12px !important;
+                padding-right: 12px !important;
             }
             .mx_LeftPanel_filterContainer::after {
                 content: "";
@@ -151,14 +102,13 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: drag;
                 z-index: 5;
             }
-            /* Raise search button and controls above overlay */
             .mx_LeftPanel_filterContainer > * {
                 position: relative !important;
                 z-index: 10 !important;
                 -webkit-app-region: no-drag;
             }
 
-            /* New room list header — overlay approach */
+            /* New room list header */
             .mx_RoomListHeaderView {
                 position: relative !important;
                 -webkit-user-select: none;
@@ -207,8 +157,81 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             }
 
             /* =============================================================
-             * ROOM VIEW CONTENT — never draggable
+             * COLUMN 3: ROOM VIEW — header with overlay
+             *
+             * The room header (64px) IS the top bar for this column.
+             * ::after overlay covers it. Interactive elements raised above.
+             * InfoWrapper keeps flex:1 (buttons naturally flex-end).
              * ============================================================= */
+            header.mx_RoomHeader,
+            .mx_RoomHeader.light-panel {
+                position: relative !important;
+                -webkit-user-select: none;
+            }
+            header.mx_RoomHeader::after,
+            .mx_RoomHeader.light-panel::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                -webkit-app-region: drag;
+                z-index: 5;
+            }
+
+            /* Raise all direct children above overlay EXCEPT infoWrapper */
+            header.mx_RoomHeader > *:not(.mx_RoomHeader_infoWrapper),
+            .mx_RoomHeader.light-panel > *:not(.mx_RoomHeader_infoWrapper) {
+                position: relative !important;
+                z-index: 10 !important;
+                -webkit-app-region: no-drag;
+            }
+
+            /* InfoWrapper: NO stacking context → below overlay.
+             * Keep flex:1 so buttons push to the right naturally.
+             * Empty space right of room name → overlay wins → drag. */
+            .mx_RoomHeader_infoWrapper {
+                position: static !important;
+                z-index: auto !important;
+            }
+
+            /* Room name text — raised above overlay, clickable */
+            .mx_RoomHeader_heading {
+                position: relative !important;
+                z-index: 10 !important;
+                -webkit-app-region: no-drag;
+                cursor: pointer;
+            }
+
+            /* Info box — no stacking context */
+            .mx_RoomHeader_info {
+                position: static !important;
+                z-index: auto !important;
+            }
+
+            /* Legacy room header */
+            .mx_LegacyRoomHeader {
+                position: relative !important;
+                -webkit-user-select: none;
+            }
+            .mx_LegacyRoomHeader::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                -webkit-app-region: drag;
+                z-index: 5;
+            }
+            .mx_LegacyRoomHeader > * {
+                position: relative !important;
+                z-index: 10 !important;
+                -webkit-app-region: no-drag;
+            }
+
+            /* Room view content — never draggable */
             .mx_RoomView_body,
             .mx_RoomView_statusArea,
             .mx_MessageComposer,
