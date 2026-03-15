@@ -26,10 +26,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Fetch Element Web
-        run: pnpm run fetch --noverify -d element.io
+        run: pnpm run fetch --noverify -d element.io/release
 
       - name: Copy variant config
-        run: cp element.io/build.json variant.json
+        run: cp element.io/release/build.json variant.json
 
       - name: Generate cache hash files
         run: |
