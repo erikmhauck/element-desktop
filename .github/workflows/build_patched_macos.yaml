@@ -1,0 +1,116 @@
+name: Build Patched macOS DMG
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Prepare webapp
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+
+      - name: Install Deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch Element Web
+        run: pnpm run fetch --noverify -d element.io
+
+      - name: Copy variant config
+        run: cp element.io/build.json variant.json
+
+      - name: Generate cache hash files
+        run: |
+          set -ex
+          pnpm --silent electron --no-sandbox --version > electronVersion
+          cat package.json | jq -c .hakDependencies | sha1sum > hakHash
+          find hak -type f -print0 | xargs -0 sha1sum >> hakHash
+          find scripts/hak -type f -print0 | xargs -0 sha1sum >> hakHash
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: webapp
+          retention-days: 1
+          path: |
+            webapp.asar
+            electronVersion
+            hakHash
+            variant.json
+
+  build:
+    name: Build macOS Universal (Unsigned)
+    needs: prepare
+    runs-on: macos-15
+    steps:
+      - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8
+        with:
+          name: webapp
+
+      - name: Cache .hak
+        id: cache
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
+        with:
+          key: ${{ runner.os }}-${{ hashFiles('hakHash', 'electronVersion') }}
+          path: |
+            ./.hak
+
+      - name: Install Rust
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.13"
+
+      - run: sudo pip3 install pyobjc-framework-Quartz
+
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+
+      - name: Install Deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Natives
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: pnpm build:native:universal
+
+      - name: Build App (Unsigned)
+        run: pnpm build:universal --publish never -m dmg
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          VARIANT_PATH: variant.json
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: element-desktop-macos-patched
+          path: |
+            dist/*.dmg
+          retention-days: 7

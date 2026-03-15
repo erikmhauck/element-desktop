@@ -7,6 +7,16 @@ Please see LICENSE files in the repository root for full details.
 
 import type { BrowserWindow } from "electron";
 
+/**
+ * Fixed macOS title bar drag regions.
+ *
+ * Changes from upstream:
+ * - Increased all drag-region heights from 13px → 28px (matches native macOS title bar)
+ * - Increased .mx_LeftPanel::before from 20px → 28px for consistency
+ * - Increased .mx_UserMenu padding-top from 32px → 38px to give traffic lights more breathing room
+ * - Updated .mx_SpacePanel_toggleCollapse calc to account for new padding
+ * - Increased .mx_ImageView_info_wrapper margin-top to match
+ */
 export function setupMacosTitleBar(window: BrowserWindow): void {
     if (process.platform !== "darwin") return;
 
@@ -19,7 +29,7 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 /* We zero the margin and use padding as we want to use it as a drag handle */ 
                 margin-top: 0 !important;
                 margin-left: 0 !important;
-                padding-top: 32px !important;
+                padding-top: 38px !important;
                 padding-left: 20px !important;
                 -webkit-app-region: drag;
                 -webkit-user-select: none;
@@ -30,12 +40,12 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             }
             /* Maintain alignment of the toggle space panel button */
             .mx_SpacePanel_toggleCollapse {
-                /* 19px original top value, 32px margin-top above, 12px original margin-top value */
-                top: calc(19px + 32px - 12px) !important;
+                /* 19px original top value, 38px padding-top above, 12px original margin-top value */
+                top: calc(19px + 38px - 12px) !important;
             }
             /* Prevent the media lightbox sender info from clipping into the traffic light buttons */
             .mx_ImageView_info_wrapper {
-                margin-top: 32px;
+                margin-top: 38px;
             }
             
             /* Mark the splash screen as a drag handle */
@@ -116,13 +126,13 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
 
             .mx_LeftPanel::before {
                 content: "";
-                height: 20px;
+                height: 28px;
                 -webkit-app-region: drag;
             }
             
             .mx_LeftPanel_newRoomList::before {
-                /* Aligned with the room header */
-                height: 13px;
+                /* Match native macOS title bar height */
+                height: 28px;
                 border-right: 1px solid var(--cpd-color-bg-subtle-primary);
             }
 
@@ -134,11 +144,11 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             
             .mx_SpaceRoomView::before {
                 display: block;
-                height: 24px;            
+                height: 28px;            
             }
 
             .mx_RoomView::before {
-                height: 13px;
+                height: 28px;
             }
         `);
     }
