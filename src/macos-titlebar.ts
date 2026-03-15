@@ -8,12 +8,15 @@ Please see LICENSE files in the repository root for full details.
 import type { BrowserWindow } from "electron";
 
 /**
- * macOS title bar — zero extra space, existing negative space is draggable.
+ * macOS title bar — zero added space, existing negative space is draggable.
  *
- * No ::before strips, no added padding, no pushed-down content.
- * The existing UI elements (room header, search area) do double duty
- * as drag handles. Traffic lights float over the top-left with just
- * enough clearance on the user menu.
+ * Key fixes over upstream:
+ * 1. .mx_RoomHeader_infoWrapper overridden from height:100% to height:auto
+ *    so header padding is exposed as drag surface.
+ * 2. The infoWrapper button is NOT marked no-drag — it inherits drag from
+ *    the header so the 52px right padding (empty space right of room name)
+ *    is a drag surface.
+ * 3. Only the heading text and non-infoWrapper buttons are no-drag.
  */
 export function setupMacosTitleBar(window: BrowserWindow): void {
     if (process.platform !== "darwin") return;
@@ -23,7 +26,7 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
     async function applyStyling(): Promise<void> {
         cssKey = await window.webContents.insertCSS(`
             /* =============================================================
-             * USER MENU — just enough padding to clear traffic lights
+             * USER MENU — traffic light clearance + drag handle
              * ============================================================= */
             .mx_UserMenu {
                 margin-top: 0 !important;
@@ -41,11 +44,13 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             }
 
             /* =============================================================
-             * ROOM HEADER — the existing 64px bar is the drag handle
+             * ROOM HEADER — the whole 64px bar is draggable
              *
-             * Key fix: override .mx_RoomHeader_infoWrapper from height:100%
-             * to height:auto so it sizes to content (~40px), exposing the
-             * header's own padding (~12px above and below) as drag surface.
+             * The infoWrapper button (room name area) KEEPS drag behavior
+             * from the header. Only the actual heading text and right-side
+             * buttons are carved out as no-drag. This means the empty
+             * space to the right of the room name and the padding above/
+             * below all header items are drag surfaces.
              * ============================================================= */
             header.mx_RoomHeader,
             .mx_RoomHeader.light-panel {
@@ -53,19 +58,29 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-user-select: none;
             }
 
+            /* Break the info wrapper's height:100% so the header's own
+             * padding is exposed above and below */
             .mx_RoomHeader_infoWrapper {
                 height: auto !important;
                 align-self: center !important;
             }
 
-            .mx_RoomHeader button,
+            /* The room name / heading text — clickable (opens room info) */
+            .mx_RoomHeader_heading {
+                -webkit-app-region: no-drag;
+            }
+
+            /* All buttons EXCEPT the infoWrapper — clickable */
+            .mx_RoomHeader button:not(.mx_RoomHeader_infoWrapper) {
+                -webkit-app-region: no-drag;
+            }
+
+            /* Other interactive elements in the header */
             .mx_RoomHeader a,
             .mx_RoomHeader [role="button"],
             .mx_RoomHeader .mx_FacePile,
-            .mx_RoomHeader .mx_RoomAvatar,
             .mx_RoomHeader .mx_BaseAvatar,
-            .mx_RoomHeader .mx_RoomHeader_infoWrapper,
-            .mx_RoomHeader .mx_IconButton {
+            .mx_RoomHeader .mx_RoomAvatar {
                 -webkit-app-region: no-drag;
             }
 
@@ -82,16 +97,21 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             }
 
             /* =============================================================
-             * SEARCH / FILTER — padding around search input is draggable
+             * SEARCH / FILTER AREA — container padding is draggable
+             *
+             * The filter container has 12px top + 8px bottom padding.
+             * RoomSearch (flex:1, 28px) sits inside. The padding strips
+             * above and below the search button are the drag surface.
+             * The search button itself stays interactive.
              * ============================================================= */
             .mx_LeftPanel_filterContainer {
                 -webkit-app-region: drag;
                 -webkit-user-select: none;
             }
+            /* The search button and other controls — interactive */
             .mx_LeftPanel_filterContainer .mx_RoomSearch,
-            .mx_LeftPanel_filterContainer input,
-            .mx_LeftPanel_filterContainer button,
-            .mx_LeftPanel_filterContainer .mx_AccessibleButton {
+            .mx_LeftPanel_filterContainer .mx_AccessibleButton,
+            .mx_LeftPanel_filterContainer button {
                 -webkit-app-region: no-drag;
             }
 
@@ -115,7 +135,7 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: no-drag;
             }
 
-            /* Room list scroll area — never draggable */
+            /* Room list scroll — never draggable */
             .mx_LeftPanel .mx_AutoHideScrollbar,
             .mx_LeftPanel .mx_IndicatorScrollbar {
                 -webkit-app-region: no-drag;
@@ -130,14 +150,13 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             .mx_RoomKnocksBar {
                 -webkit-app-region: no-drag;
             }
-
             .mx_RightPanel,
             .mx_RightPanel_ResizeWrapper {
                 -webkit-app-region: no-drag;
             }
 
             /* =============================================================
-             * FULL-PAGE VIEWS — splash, auth, home
+             * FULL-PAGE VIEWS
              * ============================================================= */
             .mx_MatrixChat_splash {
                 -webkit-app-region: drag;
@@ -180,7 +199,7 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
             }
 
             /* =============================================================
-             * GLOBAL SAFETY — dialogs, menus, iframes
+             * GLOBAL SAFETY
              * ============================================================= */
             .mx_Dialog,
             .mx_Dialog_background,
