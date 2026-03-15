@@ -449,7 +449,7 @@ app.on("ready", async () => {
         backgroundColor: "#fff",
 
         titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
-        trafficLightPosition: { x: 12, y: 12 },
+        trafficLightPosition: { x: 9, y: 8 },
 
         icon: global.trayConfig.icon_path,
         show: false,

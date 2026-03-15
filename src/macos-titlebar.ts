@@ -8,12 +8,16 @@ Please see LICENSE files in the repository root for full details.
 import type { BrowserWindow } from "electron";
 
 /**
- * macOS title bar — Safari-style unified drag regions.
+ * macOS title bar drag regions.
  *
- * Makes the actual visible header elements draggable (room header, left panel
- * header area) and carves out interactive children. No overlays, no
- * pseudo-elements — just the real UI elements doing double duty as drag
- * handles, exactly like Safari's toolbar.
+ * Strategy: use ::before/::after pseudo-elements as drag overlays positioned
+ * ON TOP of the header bars (not as separate strips that push content down).
+ * This is the VS Code approach — a thin drag region overlaps the top portion
+ * of the UI where there's padding/empty space, while interactive elements
+ * below remain clickable.
+ *
+ * The left panel search area uses its container padding as drag surface.
+ * The room header uses an overlay that covers its top padding zone.
  */
 export function setupMacosTitleBar(window: BrowserWindow): void {
     if (process.platform !== "darwin") return;
@@ -23,95 +27,8 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
     async function applyStyling(): Promise<void> {
         cssKey = await window.webContents.insertCSS(`
             /* =============================================================
-             * GLOBAL: all interactive elements are never drag handles
+             * USER MENU — traffic light clearance + drag handle
              * ============================================================= */
-            button,
-            input,
-            textarea,
-            select,
-            a,
-            [role="button"],
-            [role="menuitem"],
-            [role="tab"],
-            [role="textbox"],
-            [role="searchbox"],
-            [role="combobox"],
-            .mx_AccessibleButton,
-            .mx_IconButton {
-                -webkit-app-region: no-drag;
-            }
-
-            /* Dialogs, menus, toasts — never drag */
-            .mx_Dialog,
-            .mx_Dialog_background,
-            .mx_ContextualMenu,
-            .mx_ContextualMenu_background,
-            .mx_Toast_toast,
-            .mx_GenericToast {
-                -webkit-app-region: no-drag;
-            }
-
-            /* Iframes */
-            iframe {
-                -webkit-app-region: no-drag;
-            }
-
-            /* =============================================================
-             * LEFT PANEL — search bar integrated into drag zone
-             * ============================================================= */
-
-            /* The left panel container itself gets top padding for traffic lights */
-            .mx_LeftPanel {
-                padding-top: 6px;
-            }
-
-            /* The filter/search container IS the drag handle on the left side.
-             * The search input inside it is carved out so you can still click to search. */
-            .mx_LeftPanel_filterContainer {
-                -webkit-app-region: drag;
-                -webkit-user-select: none;
-                padding-top: 4px;
-                padding-bottom: 4px;
-            }
-
-            /* Search input itself — clickable, not draggable */
-            .mx_LeftPanel_filterContainer .mx_RoomSearch,
-            .mx_LeftPanel_filterContainer input,
-            .mx_LeftPanel_filterContainer .mx_LeftPanel_dialPadButton,
-            .mx_LeftPanel_filterContainer .mx_LeftPanel_exploreButton {
-                -webkit-app-region: no-drag;
-            }
-
-            /* New room list header (Compound-based) — also a drag handle */
-            .mx_RoomListHeaderView {
-                -webkit-app-region: drag;
-                -webkit-user-select: none;
-            }
-            .mx_RoomListHeaderView > * {
-                -webkit-app-region: no-drag;
-            }
-
-            /* Legacy room list header */
-            .mx_LegacyRoomListHeader {
-                -webkit-app-region: drag;
-                -webkit-user-select: none;
-            }
-            .mx_LegacyRoomListHeader > * {
-                -webkit-app-region: no-drag;
-            }
-
-            /* New room list panel header area */
-            .mx_RoomListPanel > header,
-            .mx_RoomListPanel > [class*="header"] {
-                -webkit-app-region: drag;
-                -webkit-user-select: none;
-            }
-            .mx_RoomListPanel > header > *,
-            .mx_RoomListPanel > [class*="header"] > * {
-                -webkit-app-region: no-drag;
-            }
-
-            /* User menu — pad down from traffic lights, draggable background */
             .mx_UserMenu {
                 margin-top: 0 !important;
                 margin-left: 0 !important;
@@ -124,67 +41,81 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: no-drag;
             }
 
-            /* Space panel toggle */
+            /* Keep space panel toggle aligned */
             .mx_SpacePanel_toggleCollapse {
                 top: calc(19px + 32px - 12px) !important;
             }
 
-            /* Scrollable room list — not draggable */
-            .mx_LeftPanel .mx_AutoHideScrollbar {
+            /* =============================================================
+             * LEFT PANEL — drag bar that sits alongside the search bar
+             * ============================================================= */
+
+            .mx_LeftPanel {
+                flex-direction: column;
+            }
+
+            /* A drag strip above the left panel content, same height as
+             * the traffic light zone */
+            .mx_LeftPanel::before {
+                content: "";
+                height: 20px;
+                -webkit-app-region: drag;
+            }
+
+            /* For the new room list layout */
+            .mx_LeftPanel_newRoomList::before {
+                height: 13px;
+                border-right: 1px solid var(--cpd-color-bg-subtle-primary);
+            }
+
+            /* The search/filter container — make the PADDING area draggable
+             * while the search input stays interactive */
+            .mx_LeftPanel_filterContainer {
+                -webkit-app-region: drag;
+                -webkit-user-select: none;
+            }
+            .mx_LeftPanel_filterContainer .mx_RoomSearch,
+            .mx_LeftPanel_filterContainer input,
+            .mx_LeftPanel_filterContainer button,
+            .mx_LeftPanel_filterContainer .mx_LeftPanel_dialPadButton,
+            .mx_LeftPanel_filterContainer .mx_LeftPanel_exploreButton,
+            .mx_LeftPanel_filterContainer .mx_AccessibleButton {
                 -webkit-app-region: no-drag;
             }
 
             /* =============================================================
-             * ROOM HEADER — the entire bar is a drag handle
+             * ROOM VIEW / SPACE VIEW — drag overlay on the header zone
+             *
+             * Uses ::before as an absolutely-positioned overlay covering the
+             * top portion of the room view. This overlaps the top padding of
+             * the room header, providing a drag surface without adding extra
+             * space or pushing content down.
              * ============================================================= */
 
-            /* The room header flex container — THIS is the main drag surface
-             * on the right side of the window, equivalent to Safari's toolbar */
-            header.mx_RoomHeader,
-            .mx_RoomHeader.light-panel {
-                -webkit-app-region: drag;
-                -webkit-user-select: none;
-                /* Ensure enough height for comfortable dragging */
-                min-height: 38px;
+            .mx_RoomView,
+            .mx_SpaceRoomView {
+                position: relative;
             }
 
-            /* All interactive children inside room header — not draggable */
-            .mx_RoomHeader .mx_RoomHeader_infoWrapper,
-            .mx_RoomHeader button,
-            .mx_RoomHeader a,
-            .mx_RoomHeader .mx_FacePile,
-            .mx_RoomHeader .mx_RoomHeader_members,
-            .mx_RoomHeader .mx_RoomAvatar,
-            .mx_RoomHeader [role="button"],
-            .mx_RoomHeader .mx_IconButton,
-            .mx_RoomHeader .mx_RoomHeader_join_button {
-                -webkit-app-region: no-drag;
-            }
-
-            /* Legacy room header (older Element versions) */
-            .mx_LegacyRoomHeader {
+            .mx_RoomView::before,
+            .mx_SpaceRoomView::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                /* Cover the top 10px of the header — this is padding/gap area,
+                 * no interactive elements live here */
+                height: 10px;
                 -webkit-app-region: drag;
-                -webkit-user-select: none;
-                min-height: 38px;
-            }
-            .mx_LegacyRoomHeader > * {
-                -webkit-app-region: no-drag;
-            }
-
-            /* Room view header wrapper */
-            .mx_RoomView_header {
-                -webkit-app-region: drag;
-                -webkit-user-select: none;
-            }
-            .mx_RoomView_header > * {
-                -webkit-app-region: no-drag;
+                z-index: 10;
+                pointer-events: auto;
             }
 
             /* =============================================================
-             * FULL-PAGE VIEWS — large draggable backgrounds
+             * FULL-PAGE BACKGROUNDS — splash, auth, home
              * ============================================================= */
 
-            /* Splash / loading screen */
             .mx_MatrixChat_splash {
                 -webkit-app-region: drag;
             }
@@ -192,7 +123,6 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: no-drag;
             }
 
-            /* Auth pages (login/register) */
             .mx_AuthPage {
                 -webkit-app-region: drag;
             }
@@ -203,7 +133,6 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: no-drag;
             }
 
-            /* Home page */
             .mx_HomePage {
                 -webkit-app-region: drag;
             }
@@ -212,16 +141,32 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: no-drag;
             }
 
-            /* Space room view — background draggable when no modal open */
-            .mx_MatrixChat_wrapper[aria-hidden="false"] .mx_RoomView_wrapper {
+            /* Background drag when no modal is open */
+            .mx_MatrixChat_wrapper[aria-hidden="false"] .mx_RoomView_wrapper,
+            .mx_MatrixChat_wrapper[aria-hidden="false"] .mx_HomePage {
                 -webkit-app-region: drag;
             }
             .mx_SpaceRoomView_landing > *,
             .mx_RoomPreviewBar,
             .mx_RoomView_body,
+            .mx_AutoHideScrollbar,
+            .mx_RightPanel_ResizeWrapper,
             .mx_RoomPreviewCard,
-            .mx_RightPanel,
-            .mx_RightPanel_ResizeWrapper {
+            .mx_LeftPanel,
+            .mx_RoomView,
+            .mx_SpaceRoomView,
+            .mx_AccessibleButton,
+            .mx_Dialog {
+                -webkit-app-region: no-drag;
+            }
+
+            /* Context menus */
+            .mx_ContextualMenu, .mx_ContextualMenu_background {
+                -webkit-app-region: no-drag;
+            }
+
+            /* Iframes */
+            iframe {
                 -webkit-app-region: no-drag;
             }
 
@@ -237,7 +182,7 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: no-drag;
             }
             .mx_ImageView_info_wrapper {
-                margin-top: 38px;
+                margin-top: 32px;
             }
         `);
     }
