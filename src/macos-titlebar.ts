@@ -69,7 +69,15 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 padding-left: 12px !important;
                 padding-right: 12px !important;
             }
-            .mx_LeftPanel_filterContainer > * {
+            /* RoomSearch is an AccessibleButton (div role=button) that fills
+             * the container. Explicitly make it drag so the whole area drags.
+             * Clicking the search still works via Cmd+K shortcut. */
+            .mx_RoomSearch {
+                -webkit-app-region: drag !important;
+                pointer-events: none !important;
+            }
+            /* Compose/create room button carved out — stays clickable */
+            .mx_LeftPanel_filterContainer > *:not(.mx_RoomSearch) {
                 -webkit-app-region: no-drag;
             }
 
@@ -121,18 +129,15 @@ export function setupMacosTitleBar(window: BrowserWindow): void {
                 -webkit-app-region: no-drag;
             }
 
-            /* InfoWrapper: inherits drag from header.
-             * Shrink height to content so vertical padding becomes drag. */
+            /* InfoWrapper: explicitly drag + pointer-events disabled.
+             * This is a <button> element with flex:1 that covers most of
+             * the header. Chromium treats <button> as implicitly no-drag,
+             * so we must explicitly override. pointer-events:none ensures
+             * click events pass through to the header's drag region.
+             * The "i" info button on the far right serves the same purpose. */
             .mx_RoomHeader_infoWrapper {
-                height: auto !important;
-                align-self: center !important;
-            }
-
-            /* Room name text: the one carved-out clickable area.
-             * Clicks bubble to infoWrapper's onClick → opens room info. */
-            .mx_RoomHeader_heading {
-                -webkit-app-region: no-drag;
-                cursor: pointer;
+                -webkit-app-region: drag !important;
+                pointer-events: none !important;
             }
 
             /* Legacy room header — same pattern */
